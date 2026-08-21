@@ -48,7 +48,7 @@ Models — hits over time and top models:
 
 ![Models section](maas-monitoring/docs/token-metrics-models-cost.png)
 
-Step-by-step apply, scrape checks, and cost-rate `oc patch` examples: [`maas-monitoring/README.md`](maas-monitoring/README.md).
+Implementation steps and what each panel is for: [`maas-monitoring/README.md`](maas-monitoring/README.md).
 
 ## Repository structure
 
@@ -68,4 +68,4 @@ cd maas-monitoring
 oc apply -k .
 ```
 
-Prerequisites: `observabilityDashboard: true`, the same Prometheus `PersesDatasource` as Usage (`kuadrant-prometheus-datasource` on 3.4), and Limitador already scraped. Details in [`maas-monitoring/README.md`](maas-monitoring/README.md).
+Prerequisites and panel descriptions: [`maas-monitoring/README.md`](maas-monitoring/README.md).

@@ -1,36 +1,14 @@
-# MaaS Token metrics (Perses)
+# Token metrics — implement
 
-This is a Perses adaptation of the Grafana dashboard created by Guy Rakover:
+Context, screenshots, and why this exists: the [repository README](../README.md).
 
-https://github.com/rockocoop/openshiftai3/tree/main/maas/maas-monitoring
-
-It adds a **Token metrics** tab to OpenShift AI **Observe and monitor → Dashboard (Tech Preview)**, immediately after the product **Usage** tab. Apply this folder as a component-owned dashboard. Do not open a PR against `odh-dashboard`. Do not replace Usage (`dashboard-3-maas-usage-admin`).
-
-The UI picks up any `PersesDashboard` whose name starts with `dashboard-`. Naming rules are in the [ODH observability dashboards guide](https://github.com/opendatahub-io/odh-dashboard/blob/main/docs/observability.md#observability-dashboards).
-
-## What it looks like
-
-Screenshots from a live OpenShift AI 3.4 cluster, time range **Last 24 hours**.
-
-Tab order after apply: Cluster, Models, Usage, **Token metrics**.
-
-![Dashboard tabs with Token metrics selected](docs/token-metrics-tabs.png)
-
-Filters (User, Subscription, Model, Project / route) and the Overview row: total hits, active users, demo revenue, and hits rate by subscription.
-
-![Token metrics overview with filters](docs/token-metrics-overview.png)
-
-Users and subscriptions — hits over time, top users, top cost, hourly bars, totals by subscription:
-
-![Users and subscriptions section](docs/token-metrics-users.png)
-
-Models — hits over time and top models. Demo cost is Overview **Total revenue** and **Top 5 users by cost** (not a separate Models panel).
-
-![Models section](docs/token-metrics-models-cost.png)
+This folder is the Kustomize apply path. Do these steps in order. Stop when a check already passes; do not double-scrape.
 
 ## What you apply
 
-From this directory, `oc apply -k .` creates:
+```bash
+oc apply -k .
+```
 
 | File | Kind | Namespace |
 |---|---|---|
@@ -39,9 +17,9 @@ From this directory, `oc apply -k .` creates:
 
 `limitador-servicemonitor.yaml` is a last-resort scrape. It is **not** in the kustomization. Skip it if Limitador is already scraped.
 
-## Implement
+The UI lists every `PersesDashboard` whose name starts with `dashboard-` ([ODH observability dashboards guide](https://github.com/opendatahub-io/odh-dashboard/blob/main/docs/observability.md#observability-dashboards)). Do not replace `dashboard-3-maas-usage-admin`.
 
-Do these in order. Stop when a check already passes; do not double-scrape.
+## Implementation
 
 ### 1. Turn on the Dashboard page
 
@@ -109,9 +87,9 @@ The CR name is `dashboard-4-maas-token-metrics-admin` so it sorts after `dashboa
 
 Schema on RHOAI 3.4: `perses.dev/v1alpha2` with panels under `spec.config`.
 
-## Filters and metrics
+## Filters
 
-| Filter | Prometheus label | Notes |
+| Filter | Prometheus label | Purpose |
 |---|---|---|
 | User | `user` | Token identity |
 | Subscription | `subscription` | `MaaSSubscription` name. Grafana grouped by `tier`; live MaaS does not |
@@ -124,11 +102,39 @@ Do **not** add a dashboard variable named `namespace`. ODH substitutes the signe
 
 Queries use untyped **`authorized_hits`** (same as Usage on RHOAI 3.4 + Limitador). If your Prometheus only has `authorized_hits_total`, replace `authorized_hits` in the dashboard YAML.
 
-Rate-limit success/blocked (`authorized_calls` / `limited_calls`) stays on the **Usage** tab. Token metrics is hits, subscriptions, and demo cost.
+Rate-limit success/blocked (`authorized_calls` / `limited_calls`) stays on the **Usage** tab.
+
+## Dashboard panels
+
+### Overview
+
+| Panel | Purpose |
+|---|---|
+| Total authorized hits | Count of Limitador `authorized_hits` in the selected time window |
+| Active users | Distinct `user` values with hits in that window |
+| Total revenue (USD) | Hits × `maas:cost_rate` per subscription. Subscriptions with no rate are omitted |
+| Authorized hits rate by subscription | Instant rate of hits, one series per subscription |
+
+### Users and subscriptions
+
+| Panel | Purpose |
+|---|---|
+| Authorized hits by user and subscription | Hit rate over time, one series per `user` + `subscription` |
+| Top 10 users by hits | Ranking for the selected window (`increase` of hits) |
+| Top 5 users by cost (USD) | Same window, `increase(authorized_hits) * maas:cost_rate` |
+| Hourly authorized hits by user | One bar per clock hour (`increase[1h]`, `minStep: 1h`). Not a trailing 1h rate |
+| Total authorized hits by subscription | Cumulative hits in the selected range, one series per subscription |
+
+### Models
+
+| Panel | Purpose |
+|---|---|
+| Authorized hits by model | Hits over the selected range, one series per model |
+| Top models by hits | Ranking for the selected window |
 
 ## Cost rates
 
-Prices are not hard-coded in panel PromQL. Cost panels multiply `increase(authorized_hits)` by recording metric `maas:cost_rate{subscription="<name>"}`.
+Prices are not hard-coded in panel PromQL. Cost panels join `increase(authorized_hits)` to `maas:cost_rate{subscription="<name>"}`.
 
 A subscription with no `maas:cost_rate` series still appears in hit charts; it is omitted from revenue and cost.
 
