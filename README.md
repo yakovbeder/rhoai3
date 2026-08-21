@@ -48,7 +48,7 @@ Models — hits over time and top models:
 
 ![Models section](maas-monitoring/docs/token-metrics-models-cost.png)
 
-Implementation steps and what each panel is for: [`maas-monitoring/README.md`](maas-monitoring/README.md).
+Deployment procedure and panel reference: [`maas-monitoring/README.md`](maas-monitoring/README.md).
 
 ## Repository structure
 
@@ -68,4 +68,4 @@ cd maas-monitoring
 oc apply -k .
 ```
 
-Prerequisites and panel descriptions: [`maas-monitoring/README.md`](maas-monitoring/README.md).
+Full procedure: [`maas-monitoring/README.md`](maas-monitoring/README.md).

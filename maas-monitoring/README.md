@@ -1,21 +1,21 @@
-# Token metrics — implement
+# Deploying Token metrics
 
-Context, screenshots, and why this exists: the [repository README](../README.md).
+This procedure deploys the Token metrics dashboard and the demo cost recording rule. For background, screenshots, and design notes, see the [repository README](../README.md).
 
-This folder is the Kustomize apply path. Do these steps in order. Stop when a check already passes; do not double-scrape. Apply is **step 4**, after the scrape check.
+Complete the following steps in order. Apply the manifests only in step 4, after you confirm Limitador is already being scraped. If a Limitador scrape already exists, do not add another ServiceMonitor or PodMonitor.
 
-## What you apply
+## Manifests
 
 | File | Kind | Namespace |
 |---|---|---|
 | `dashboard-4-maas-token-metrics-admin.yaml` | `PersesDashboard` | `redhat-ods-applications` |
 | `maas-cost-rates.yaml` | `PrometheusRule` | `kuadrant-system` |
 
-`limitador-servicemonitor.yaml` is a last-resort scrape. It is **not** in the kustomization. Skip it if Limitador is already scraped.
+`limitador-servicemonitor.yaml` is an optional fallback scrape. It is not listed in `kustomization.yaml`. Do not apply it if Limitador is already scraped.
 
 The UI lists every `PersesDashboard` whose name starts with `dashboard-` ([ODH observability dashboards guide](https://github.com/opendatahub-io/odh-dashboard/blob/main/docs/observability.md#observability-dashboards)). Do not replace `dashboard-3-maas-usage-admin`.
 
-## Implementation
+## Procedure
 
 ### 1. Turn on the Dashboard page
 
