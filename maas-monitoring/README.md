@@ -2,13 +2,9 @@
 
 Context, screenshots, and why this exists: the [repository README](../README.md).
 
-This folder is the Kustomize apply path. Do these steps in order. Stop when a check already passes; do not double-scrape.
+This folder is the Kustomize apply path. Do these steps in order. Stop when a check already passes; do not double-scrape. Apply is **step 4**, after the scrape check.
 
 ## What you apply
-
-```bash
-oc apply -k .
-```
 
 | File | Kind | Namespace |
 |---|---|---|
@@ -75,6 +71,8 @@ That YAML has no `bearerTokenFile` (User Workload Monitoring rejects file-based 
 
 ### 4. Apply the dashboard and cost rule
 
+From this directory:
+
 ```bash
 oc apply -k .
 ```
@@ -100,37 +98,41 @@ Do **not** add a dashboard variable named `namespace`. ODH substitutes the signe
 
 **All** on each filter uses `customAllValue: ".*"` so PromQL `=~"$var"` matchers stay valid.
 
+## Metrics
+
 Queries use untyped **`authorized_hits`** (same as Usage on RHOAI 3.4 + Limitador). If your Prometheus only has `authorized_hits_total`, replace `authorized_hits` in the dashboard YAML.
 
-Rate-limit success/blocked (`authorized_calls` / `limited_calls`) stays on the **Usage** tab.
+Rate-limit success/blocked (`authorized_calls` / `limited_calls`) stays on the **Usage** tab. Token metrics is hits, subscriptions, and demo cost.
 
 ## Dashboard panels
 
+Type is how the panel is drawn: **stat** (single number), **timeseries** (line or bars), **table** (rows). A gray bar in a table is often one row that has not painted yet, or no series.
+
 ### Overview
 
-| Panel | Purpose |
-|---|---|
-| Total authorized hits | Count of Limitador `authorized_hits` in the selected time window |
-| Active users | Distinct `user` values with hits in that window |
-| Total revenue (USD) | Hits × `maas:cost_rate` per subscription. Subscriptions with no rate are omitted |
-| Authorized hits rate by subscription | Instant rate of hits, one series per subscription |
+| Panel | Type | Purpose |
+|---|---|---|
+| Total authorized hits | Stat | `sum(increase(authorized_hits[$__range]))` — hits in the selected window, not the raw counter |
+| Active users | Stat | Distinct `user` labels on series that exist **now** (filters apply). Not limited to the selected time range |
+| Total revenue (USD) | Stat | Hits in the window × `maas:cost_rate` per subscription. Subscriptions with no rate are omitted |
+| Authorized hits rate by subscription | Timeseries | `rate(...[$__rate_interval])`, one series per subscription |
 
 ### Users and subscriptions
 
-| Panel | Purpose |
-|---|---|
-| Authorized hits by user and subscription | Hit rate over time, one series per `user` + `subscription` |
-| Top 10 users by hits | Ranking for the selected window (`increase` of hits) |
-| Top 5 users by cost (USD) | Same window, `increase(authorized_hits) * maas:cost_rate` |
-| Hourly authorized hits by user | One bar per clock hour (`increase[1h]`, `minStep: 1h`). Not a trailing 1h rate |
-| Total authorized hits by subscription | Cumulative hits in the selected range, one series per subscription |
+| Panel | Type | Purpose |
+|---|---|---|
+| Authorized hits by user and subscription | Timeseries | Hit **rate** over time, one series per `user` + `subscription` |
+| Top 10 users by hits | Table | Ranking for the selected window (`increase` of hits) |
+| Top 5 users by cost (USD) | Table | Same window, `increase(authorized_hits) * maas:cost_rate` |
+| Hourly authorized hits by user | Timeseries (bars) | One bar per clock hour (`increase[1h]`, `minStep: 1h`). Not a trailing 1h rate. Use Last **6h** or **24h** — Last 1h is a single bar |
+| Total authorized hits by subscription | Timeseries | `increase(...[$__range])` at each step (sliding window), one series per subscription. Looks stepped when traffic is bursty; not a running total from the start of the range |
 
 ### Models
 
-| Panel | Purpose |
-|---|---|
-| Authorized hits by model | Hits over the selected range, one series per model |
-| Top models by hits | Ranking for the selected window |
+| Panel | Type | Purpose |
+|---|---|---|
+| Authorized hits by model | Timeseries | Same sliding `increase([$__range])` as the subscription totals, one series per model |
+| Top models by hits | Table | Ranking for the selected window |
 
 ## Cost rates
 
@@ -145,7 +147,7 @@ oc get maassubscription -A
 # or Prometheus: label_values(authorized_hits, subscription)
 ```
 
-Replace the full rule list (`NS=kuadrant-system`). Merge replaces `spec.groups`:
+**Supported edit:** replace the full `spec.groups` list. Merge replaces that whole tree; copy every subscription you still want billed.
 
 ```bash
 oc patch prometheusrule maas-cost-rates -n kuadrant-system --type merge -p "$(cat <<'EOF'
@@ -166,20 +168,14 @@ EOF
 )"
 ```
 
-Wait about 30 seconds, then confirm on the same Prometheus that scrapes Limitador:
+Wait about 30 seconds, then confirm on the same Prometheus that scrapes Limitador. If `wget` is missing in the pod, use the Thanos / User Workload query UI instead:
 
 ```bash
 oc exec -n openshift-user-workload-monitoring prometheus-user-workload-0 -c prometheus -- \
   wget -qO- --post-data='query=maas:cost_rate' http://localhost:9090/api/v1/query
 ```
 
-Change one existing rate (index from `oc get prometheusrule maas-cost-rates -n kuadrant-system -o jsonpath='{.spec.groups[0].rules}'`):
-
-```bash
-oc patch prometheusrule maas-cost-rates -n kuadrant-system --type json -p '[
-  {"op":"replace","path":"/spec/groups/0/rules/0/expr","value":"vector(0.009)"}
-]'
-```
+JSON patch of `rules/0` is **not** the supported path. That index is whatever happened to be first after the last merge. Replace the full list above.
 
 Keep label `openshift.io/prometheus-rule-evaluation-scope: leaf-prometheus` or User Workload Monitoring will not evaluate the rule. Keep the object in `kuadrant-system` so Thanos `?namespace=kuadrant-system` (the Usage datasource) can see `maas:cost_rate`.
 
@@ -189,4 +185,5 @@ Keep label `openshift.io/prometheus-rule-evaluation-scope: leaf-prometheus` or U
 2. Datasource name does not match Usage. Re-run step 2.
 3. You are not in the `-admin` audience (need `prometheuses/api` like Usage).
 4. Usage CR is not `dashboard-3-…`, so this tab sorted somewhere unexpected. Rename the Token metrics CR.
-5. Cost tiles only: hits work, revenue is missing → no `maas:cost_rate` for that `subscription`. Patch the PrometheusRule.
+5. Cost tiles only: hits work, revenue is missing → no `maas:cost_rate` for that `subscription`. Patch the PrometheusRule (full `spec.groups` list).
+6. Hourly chart is a single bar or looks empty → widen the time range to Last 6h or 24h.
