@@ -1,0 +1,27 @@
+# USD per authorized hit, keyed by Prometheus `subscription` label
+# (MaaSSubscription metadata.name). Cost panels join authorized_hits to maas:cost_rate.
+#
+# Namespace is kuadrant-system so User Workload Monitoring evaluates the rule next to
+# Limitador scrape (Thanos tenancy ?namespace=kuadrant-system).
+# Label openshift.io/prometheus-rule-evaluation-scope=leaf-prometheus is required on OCP UWM.
+#
+# Add or change rates with oc patch — see README.md (do not edit dashboard PromQL).
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: maas-cost-rates
+  namespace: kuadrant-system
+  labels:
+    app.kubernetes.io/name: maas-token-metrics
+    app.kubernetes.io/part-of: maas-observability
+    openshift.io/prometheus-rule-evaluation-scope: leaf-prometheus
+spec:
+  groups:
+  - name: maas-cost
+    interval: 30s
+    rules:
+    # COST_RATES: one recording series per subscription. expr is USD per authorized hit.
+    - record: maas:cost_rate
+      expr: vector(0.008)
+      labels:
+        subscription: gpt-premium

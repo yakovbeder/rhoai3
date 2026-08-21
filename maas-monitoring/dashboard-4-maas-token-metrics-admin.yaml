@@ -1,0 +1,488 @@
+# PersesDashboard for OpenShift AI Observe & monitor → Dashboard (Tech Preview).
+# Tab label: Token metrics. Sorts after Usage (dashboard-3-maas-usage-admin).
+# COST_RATES: do not hard-code USD here. Join increase(authorized_hits) with
+# maas:cost_rate from PrometheusRule maas-cost-rates (see README oc patch).
+apiVersion: perses.dev/v1alpha2
+kind: PersesDashboard
+metadata:
+  name: dashboard-4-maas-token-metrics-admin
+  namespace: redhat-ods-applications
+  labels:
+    app.kubernetes.io/name: maas-token-metrics
+    app.kubernetes.io/part-of: maas-observability
+spec:
+  config:
+    display:
+      name: Token metrics
+      description: Hits, subscriptions, and demo cost from Limitador authorized_hits. Cost uses maas:cost_rate (PrometheusRule
+        maas-cost-rates).
+    duration: 1h
+    refreshInterval: 30s
+    variables:
+    - kind: ListVariable
+      spec:
+        allowAllValue: true
+        allowMultiple: true
+        customAllValue: ".*"
+        defaultValue: $__all
+        display:
+          hidden: false
+          name: User
+        name: user
+        plugin:
+          kind: PrometheusLabelValuesVariable
+          spec:
+            datasource: &id001
+              kind: PrometheusDatasource
+              name: kuadrant-prometheus-datasource
+            labelName: user
+            matchers:
+            - authorized_hits{user!=""}
+    - kind: ListVariable
+      spec:
+        allowAllValue: true
+        allowMultiple: true
+        customAllValue: ".*"
+        defaultValue: $__all
+        display:
+          hidden: false
+          name: Subscription
+        name: subscription
+        plugin:
+          kind: PrometheusLabelValuesVariable
+          spec:
+            datasource: *id001
+            labelName: subscription
+            matchers:
+            - authorized_hits{subscription!=""}
+    - kind: ListVariable
+      spec:
+        allowAllValue: true
+        allowMultiple: true
+        customAllValue: ".*"
+        defaultValue: $__all
+        display:
+          hidden: false
+          name: Model
+        name: model
+        plugin:
+          kind: PrometheusLabelValuesVariable
+          spec:
+            datasource: *id001
+            labelName: model
+            matchers:
+            - authorized_hits{model!=""}
+    - kind: ListVariable
+      spec:
+        allowAllValue: true
+        allowMultiple: true
+        customAllValue: ".*"
+        defaultValue: $__all
+        display:
+          hidden: false
+          name: Project / route
+          description: OpenShift project and HTTPRoute, Limitador label limitador_namespace (example beder/gpt-oss-20b-kserve-route).
+        name: serving_route
+        plugin:
+          kind: PrometheusLabelValuesVariable
+          spec:
+            datasource: *id001
+            labelName: limitador_namespace
+            matchers:
+            - authorized_hits{limitador_namespace!=""}
+    layouts:
+    - kind: Grid
+      spec:
+        display:
+          collapse:
+            open: true
+          title: Overview
+        items:
+        - content:
+            $ref: '#/spec/panels/totalHits'
+          height: 5
+          width: 8
+          x: 0
+          "y": 0
+        - content:
+            $ref: '#/spec/panels/activeUsers'
+          height: 5
+          width: 8
+          x: 8
+          "y": 0
+        - content:
+            $ref: '#/spec/panels/totalRevenue'
+          height: 5
+          width: 8
+          x: 16
+          "y": 0
+        - content:
+            $ref: '#/spec/panels/rateBySubscription'
+          height: 8
+          width: 24
+          x: 0
+          "y": 5
+    - kind: Grid
+      spec:
+        display:
+          collapse:
+            open: true
+          title: Users and subscriptions
+        items:
+        - content:
+            $ref: '#/spec/panels/hitsByUserSubscription'
+          height: 10
+          width: 24
+          x: 0
+          "y": 0
+        - content:
+            $ref: '#/spec/panels/topUsers'
+          height: 8
+          width: 12
+          x: 0
+          "y": 10
+        - content:
+            $ref: '#/spec/panels/topCost'
+          height: 8
+          width: 12
+          x: 12
+          "y": 10
+        - content:
+            $ref: '#/spec/panels/hourlyByUser'
+          height: 8
+          width: 24
+          x: 0
+          "y": 18
+        - content:
+            $ref: '#/spec/panels/hitsBySubscriptionRange'
+          height: 8
+          width: 24
+          x: 0
+          "y": 26
+    - kind: Grid
+      spec:
+        display:
+          collapse:
+            open: true
+          title: Models
+        items:
+        - content:
+            $ref: '#/spec/panels/hitsByModel'
+          height: 8
+          width: 24
+          x: 0
+          "y": 0
+        - content:
+            $ref: '#/spec/panels/topModels'
+          height: 8
+          width: 24
+          x: 0
+          "y": 8
+    panels:
+      totalHits:
+        kind: Panel
+        spec:
+          display:
+            name: Total authorized hits
+            description: Authorized hits over the selected time window (Limitador authorized_hits).
+          plugin:
+            kind: StatChart
+            spec: &id002
+              calculation: last
+              format:
+                decimalPlaces: 0
+                shortValues: true
+                unit: decimal
+          queries:
+          - kind: TimeSeriesQuery
+            spec:
+              plugin:
+                kind: PrometheusTimeSeriesQuery
+                spec:
+                  datasource: *id001
+                  query: sum(increase(authorized_hits{user!="", user=~"$user", subscription=~"$subscription", model=~"$model", limitador_namespace=~"$serving_route"}[$__range]))
+                    or vector(0)
+                  seriesNameFormat: Hits
+      activeUsers:
+        kind: Panel
+        spec:
+          display:
+            name: Active users
+            description: Distinct users with authorized hits in the selected window.
+          plugin:
+            kind: StatChart
+            spec: *id002
+          queries:
+          - kind: TimeSeriesQuery
+            spec:
+              plugin:
+                kind: PrometheusTimeSeriesQuery
+                spec:
+                  datasource: *id001
+                  query: count(count by (user) (authorized_hits{user!="", user=~"$user", subscription=~"$subscription", model=~"$model", limitador_namespace=~"$serving_route"}))
+                    or vector(0)
+                  seriesNameFormat: Users
+      totalRevenue:
+        kind: Panel
+        spec:
+          display:
+            name: Total revenue (USD)
+            description: Hits times maas:cost_rate for each subscription. Subscriptions without a rate are omitted. Patch
+              PrometheusRule maas-cost-rates to add rates.
+          plugin:
+            kind: StatChart
+            spec:
+              calculation: last
+              format:
+                decimalPlaces: 2
+                shortValues: true
+                unit: decimal
+          queries:
+          - kind: TimeSeriesQuery
+            spec:
+              plugin:
+                kind: PrometheusTimeSeriesQuery
+                spec:
+                  datasource: *id001
+                  query: |-
+                    sum(sum by (user, subscription) (
+                      increase(authorized_hits{user!="", user=~"$user", subscription=~"$subscription", model=~"$model", limitador_namespace=~"$serving_route"}[$__range])
+                      * on(subscription) group_left
+                      maas:cost_rate
+                    )) or vector(0)
+                  seriesNameFormat: USD
+      rateBySubscription:
+        kind: Panel
+        spec:
+          display:
+            name: Authorized hits rate by subscription
+            description: Per-subscription hit rate.
+          plugin:
+            kind: TimeSeriesChart
+            spec: &id003
+              legend:
+                mode: list
+                position: bottom
+              visual:
+                areaOpacity: 0.2
+                connectNulls: false
+                display: line
+                lineWidth: 2
+              yAxis:
+                min: 0
+                format:
+                  unit: decimal
+          queries:
+          - kind: TimeSeriesQuery
+            spec:
+              plugin:
+                kind: PrometheusTimeSeriesQuery
+                spec:
+                  datasource: *id001
+                  query: sum by (subscription) (rate(authorized_hits{user!="", user=~"$user", subscription=~"$subscription",
+                    model=~"$model", limitador_namespace=~"$serving_route"}[$__rate_interval]))
+                  seriesNameFormat: '{{subscription}}'
+      hitsByUserSubscription:
+        kind: Panel
+        spec:
+          display:
+            name: Authorized hits by user and subscription
+            description: Hit rate per user and subscription.
+          plugin:
+            kind: TimeSeriesChart
+            spec: *id003
+          queries:
+          - kind: TimeSeriesQuery
+            spec:
+              plugin:
+                kind: PrometheusTimeSeriesQuery
+                spec:
+                  datasource: *id001
+                  query: sum by (user, subscription) (rate(authorized_hits{user!="", user=~"$user", subscription=~"$subscription",
+                    model=~"$model", limitador_namespace=~"$serving_route"}[$__rate_interval]))
+                  seriesNameFormat: '{{user}} ({{subscription}})'
+      topUsers:
+        kind: Panel
+        spec:
+          display:
+            name: Top 10 users by hits
+            description: Users with the most authorized hits in the selected window.
+          plugin:
+            kind: Table
+            spec:
+              columnSettings:
+              - hide: true
+                name: timestamp
+              - align: left
+                enableSorting: true
+                header: User
+                name: user
+              - align: right
+                enableSorting: true
+                format:
+                  decimalPlaces: 0
+                  shortValues: true
+                  unit: decimal
+                header: Hits
+                name: value
+                sort: desc
+              density: compact
+              pagination: true
+          queries:
+          - kind: TimeSeriesQuery
+            spec:
+              plugin:
+                kind: PrometheusTimeSeriesQuery
+                spec:
+                  datasource: *id001
+                  query: round(topk(10, sum by (user) (increase(authorized_hits{user!="",
+                    user=~"$user", subscription=~"$subscription", model=~"$model", limitador_namespace=~"$serving_route"}[$__range]))))
+      hourlyByUser:
+        kind: Panel
+        spec:
+          display:
+            name: Hourly authorized hits by user
+            description: One bar per clock hour. Height is hits in that hour (increase over 1h, minStep 1h). Not a trailing rate.
+          plugin:
+            kind: TimeSeriesChart
+            spec:
+              legend:
+                mode: list
+                position: bottom
+              visual:
+                areaOpacity: 0.6
+                connectNulls: false
+                display: bar
+                lineWidth: 1
+              yAxis:
+                min: 0
+                format:
+                  unit: decimal
+          queries:
+          - kind: TimeSeriesQuery
+            spec:
+              plugin:
+                kind: PrometheusTimeSeriesQuery
+                spec:
+                  datasource: *id001
+                  minStep: 1h
+                  query: sum by (user) (increase(authorized_hits{user!="", user=~"$user",
+                    subscription=~"$subscription", model=~"$model", limitador_namespace=~"$serving_route"}[1h]))
+                  seriesNameFormat: '{{user}}'
+      hitsBySubscriptionRange:
+        kind: Panel
+        spec:
+          display:
+            name: Total authorized hits by subscription
+            description: Increase of authorized_hits over the selected range, by subscription.
+          plugin:
+            kind: TimeSeriesChart
+            spec: *id003
+          queries:
+          - kind: TimeSeriesQuery
+            spec:
+              plugin:
+                kind: PrometheusTimeSeriesQuery
+                spec:
+                  datasource: *id001
+                  query: sum by (subscription) (increase(authorized_hits{user!="", user=~"$user", subscription=~"$subscription",
+                    model=~"$model", limitador_namespace=~"$serving_route"}[$__range]))
+                  seriesNameFormat: '{{subscription}}'
+      topCost:
+        kind: Panel
+        spec:
+          display:
+            name: Top 5 users by cost (USD)
+            description: increase(authorized_hits) * maas:cost_rate. Add rates with oc patch on PrometheusRule maas-cost-rates.
+          plugin:
+            kind: Table
+            spec:
+              columnSettings:
+              - hide: true
+                name: timestamp
+              - align: left
+                enableSorting: true
+                header: User
+                name: user
+              - align: left
+                enableSorting: true
+                header: Subscription
+                name: subscription
+              - align: right
+                enableSorting: true
+                format:
+                  decimalPlaces: 2
+                  unit: decimal
+                header: Cost (USD)
+                name: value
+                sort: desc
+              density: compact
+              pagination: true
+          queries:
+          - kind: TimeSeriesQuery
+            spec:
+              plugin:
+                kind: PrometheusTimeSeriesQuery
+                spec:
+                  datasource: *id001
+                  query: |-
+                    topk(5, sum by (user, subscription) (
+                      increase(authorized_hits{user!="", user=~"$user", subscription=~"$subscription", model=~"$model", limitador_namespace=~"$serving_route"}[$__range])
+                      * on(subscription) group_left
+                      maas:cost_rate
+                    ))
+      hitsByModel:
+        kind: Panel
+        spec:
+          display:
+            name: Authorized hits by model
+            description: Hits over the selected range, one series per model.
+          plugin:
+            kind: TimeSeriesChart
+            spec: *id003
+          queries:
+          - kind: TimeSeriesQuery
+            spec:
+              plugin:
+                kind: PrometheusTimeSeriesQuery
+                spec:
+                  datasource: *id001
+                  query: sum by (model) (increase(authorized_hits{user!="", user=~"$user",
+                    subscription=~"$subscription", model=~"$model", limitador_namespace=~"$serving_route"}[$__range]))
+                  seriesNameFormat: '{{model}}'
+      topModels:
+        kind: Panel
+        spec:
+          display:
+            name: Top models by hits
+            description: Models with the most authorized hits in the selected window.
+          plugin:
+            kind: Table
+            spec:
+              columnSettings:
+              - hide: true
+                name: timestamp
+              - align: left
+                enableSorting: true
+                header: Model
+                name: model
+              - align: right
+                enableSorting: true
+                format:
+                  decimalPlaces: 0
+                  shortValues: true
+                  unit: decimal
+                header: Hits
+                name: value
+                sort: desc
+              density: compact
+              pagination: true
+          queries:
+          - kind: TimeSeriesQuery
+            spec:
+              plugin:
+                kind: PrometheusTimeSeriesQuery
+                spec:
+                  datasource: *id001
+                  query: round(topk(10, sum by (model) (increase(authorized_hits{user!="",
+                    user=~"$user", subscription=~"$subscription", model=~"$model", limitador_namespace=~"$serving_route"}[$__range]))))

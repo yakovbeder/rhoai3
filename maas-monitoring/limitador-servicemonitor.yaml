@@ -1,0 +1,32 @@
+# Optional fallback scrape of Limitador /metrics.
+# Do NOT apply this if Kuadrant already scrapes Limitador (duplicate series).
+#
+# Skip when any of these are true:
+# - oc get podmonitor kuadrant-limitador-monitor -n kuadrant-system
+# - Kuadrant spec.observability.enable: true
+# - authorized_hits or authorized_hits_total already exists in Prometheus
+#
+# Preferred: oc patch kuadrant kuadrant -n kuadrant-system --type merge \
+#   -p '{"spec":{"observability":{"enable":true}}}'
+#
+# Not listed in kustomization.yaml. Apply only after the checks above fail:
+#   oc apply -f limitador-servicemonitor.yaml
+#
+# No bearerTokenFile — User Workload Monitoring rejects file-based tokens.
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: limitador-metrics
+  namespace: kuadrant-system
+  labels:
+    app: limitador
+    app.kubernetes.io/name: maas-token-metrics
+    app.kubernetes.io/part-of: maas-observability
+spec:
+  selector:
+    matchLabels:
+      app: limitador
+  endpoints:
+  - port: http
+    path: /metrics
+    interval: 30s
