@@ -20,13 +20,13 @@ Filters (User, Subscription, Model, Project / route) and the Overview row: total
 
 ![Token metrics overview with filters](docs/token-metrics-overview.png)
 
-Users and subscriptions (hits over time, top users, hourly buckets).
+Users and subscriptions — hits over time, top users, top cost, hourly bars, totals by subscription:
 
 ![Users and subscriptions section](docs/token-metrics-users.png)
 
-Models, plus cost panels that join hits to per-subscription rates.
+Models — hits over time and top models. Demo cost is Overview **Total revenue** and **Top 5 users by cost** (not a separate Models panel).
 
-![Models and cost section](docs/token-metrics-models-cost.png)
+![Models section](docs/token-metrics-models-cost.png)
 
 ## What you apply
 
