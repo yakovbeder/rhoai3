@@ -1,8 +1,55 @@
-# Deploying Token metrics
+# MaaS Token metrics (Perses)
 
-This procedure deploys the Token metrics dashboard and the demo cost recording rule. For background, screenshots, and design notes, see the [repository README](../README.md).
+> This is a Perses adaptation of the Grafana dashboard created by **Guy Rakover**.
+>
+> Original dashboard: [rockocoop/openshiftai3 — maas/maas-monitoring](https://github.com/rockocoop/openshiftai3/tree/main/maas/maas-monitoring)
 
-Complete the following steps in order. Apply the manifests only in step 4, after you confirm Limitador is already being scraped. If a Limitador scrape already exists, do not add another ServiceMonitor or PodMonitor.
+This directory adds a **Token metrics** tab to OpenShift AI **Observe and monitor → Dashboard (Tech Preview)**. The tab sorts after the product **Usage** tab. Apply the YAML with Kustomize. The UI lists any `PersesDashboard` whose name starts with `dashboard-`. Do not replace Usage (`dashboard-3-maas-usage-admin`), and do not open a PR against `odh-dashboard`.
+
+Tested with:
+
+- OpenShift AI 3.4
+- Perses `perses.dev/v1alpha2` (`spec.config`)
+- Kuadrant / Limitador (`authorized_hits`)
+
+## Table of contents
+
+- [About](#about)
+- [Screenshots](#screenshots)
+- [Manifests](#manifests)
+- [Procedure](#procedure)
+- [Filters](#filters)
+- [Metrics](#metrics)
+- [Dashboard panels](#dashboard-panels)
+- [Cost rates](#cost-rates)
+- [If panels are empty](#if-panels-are-empty)
+
+## About
+
+- Aimed at cluster admins who need hits, subscription, and demo cost for Model as a Service (MaaS) traffic on OpenShift AI.
+- Metrics come from Limitador (`authorized_hits`), the same series Usage already queries. Grouping is by **subscription** (`MaaSSubscription` name), not Grafana `tier`.
+- Demo USD rates live in a `PrometheusRule` (`maas:cost_rate`). Patch the rule to change prices; do not edit PromQL in every panel.
+- Multi-tenant filter is **Project / route** (`limitador_namespace` = `{project}/{HTTPRoute}`). Do not name a variable `namespace` — OpenShift AI would bind the signed-in user’s projects, not the Limitador scrape.
+
+## Screenshots
+
+From a live OpenShift AI 3.4 cluster, time range **Last 24 hours**. After apply, admins see **Cluster**, **Models**, **Usage**, **Token metrics**.
+
+Tab order:
+
+![Dashboard tabs with Token metrics selected](docs/token-metrics-tabs.png)
+
+Filters and Overview — total hits, active users, demo revenue, hits rate by subscription:
+
+![Token metrics overview with filters](docs/token-metrics-overview.png)
+
+Users and subscriptions — hits over time, top users, top cost, hourly bars, totals by subscription:
+
+![Users and subscriptions section](docs/token-metrics-users.png)
+
+Models — hits over time and top models:
+
+![Models section](docs/token-metrics-models-cost.png)
 
 ## Manifests
 
@@ -14,6 +61,8 @@ Complete the following steps in order. Apply the manifests only in step 4, after
 `limitador-servicemonitor.yaml` is an optional fallback scrape. It is not listed in `kustomization.yaml`. Do not apply it if Limitador is already scraped.
 
 The UI lists every `PersesDashboard` whose name starts with `dashboard-` ([ODH observability dashboards guide](https://github.com/opendatahub-io/odh-dashboard/blob/main/docs/observability.md#observability-dashboards)). Do not replace `dashboard-3-maas-usage-admin`.
+
+Complete the following steps in order. Apply the manifests only in step 4, after you confirm Limitador is already being scraped. If a Limitador scrape already exists, do not add another ServiceMonitor or PodMonitor.
 
 ## Procedure
 
