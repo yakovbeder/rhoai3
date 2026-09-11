@@ -1,69 +1,51 @@
 # MaaS Token metrics (Perses) — RHOAI 3.5 / COO
 
-> This is a Perses adaptation of the Grafana dashboard created by **Guy Rakover**.
->
-> Original dashboard: [rockocoop/openshiftai3 — maas/maas-monitoring](https://github.com/rockocoop/openshiftai3/tree/main/maas/maas-monitoring)
+Adds a **Token metrics** tab on OpenShift AI **Observe & monitor → Dashboard** (GA on 3.5). It sorts after **Usage**. Leave the product Usage dashboard (`dashboard-3-maas-usage-admin`) in place.
 
-Customer-facing YAML for a **Token metrics** tab on OpenShift AI **Observe & monitor → Dashboard**. It sorts **after Usage**. On 3.5 that Dashboard page is GA.
+**3.5 does not use User Workload Monitoring.** Queries, scrape, and cost recording stay on Cluster Observability Operator (COO), same path as Usage (`data-science-prometheus-datasource`, `authorized_hits_total`).
 
-Apply the YAML on the cluster. OpenShift AI lists the new tab next to Usage when the object name starts with `dashboard-`. Leave the product Usage dashboard (`dashboard-3-maas-usage-admin`) in place.
+The 3.4 UWM YAML is in [`../3.4/`](../3.4/). Do not apply 3.4 and 3.5 together.
 
-**3.5 does not use User Workload Monitoring.** Queries, scrape, and cost recording all stay on Cluster Observability Operator (COO), same as Usage and the other 3.5 dashboards.
+Run every `oc` apply command from the **repo root**.
 
-The 3.4 UWM snapshot is in [`../3.4/`](../3.4/). Do not apply 3.4 and 3.5 together.
+## Procedure
 
-## Apply
+Complete these steps in order. Apply the dashboard only in step 4.
 
-```bash
-oc apply -k maas-monitoring/3.5
-```
-
-That creates:
+That apply creates:
 
 | File | Object | Namespace |
 |---|---|---|
 | `dashboard-4-maas-token-metrics-admin.yaml` | `PersesDashboard` | `redhat-ods-monitoring` |
 | `maas-cost-rates.yaml` | `PrometheusRule` (`monitoring.rhobs/v1`) | `redhat-ods-monitoring` |
 
-If a Token metrics dashboard from 3.4 is still live, delete it so there is not a second tab:
+### 1. Turn on the Dashboard page
 
 ```bash
-oc delete persesdashboard dashboard-4-maas-token-metrics-admin -n redhat-ods-applications --ignore-not-found
-oc delete prometheusrule maas-cost-rates -n kuadrant-system --ignore-not-found
+oc get odhdashboardconfig odh-dashboard-config -n redhat-ods-applications \
+  -o jsonpath='{.spec.dashboardConfig.observabilityDashboard}{"\n"}'
 ```
 
-Reload **Observe & monitor → Dashboard**. Admins should see **Cluster**, **Model**, **Usage**, **Token metrics**.
+If that is not `true`:
 
-### Prerequisites
-
-- `OdhDashboardConfig.spec.dashboardConfig.observabilityDashboard: true`
-- Perses operator + COO `PersesDatasource` **`data-science-prometheus-datasource`** in `redhat-ods-monitoring` (same as Usage on RHOAI 3.5). The dashboard must live in that namespace so Perses can resolve the datasource.
-- Live Usage tab name starts with `dashboard-`. This CR is `dashboard-4-…` so it sorts after `dashboard-3-maas-usage-admin`. If Usage is not `dashboard-3-…`, rename this CR so the `dashboard-N-` prefix still sorts after it.
-- Schema matches this cluster: `perses.dev/v1alpha2` with panels under `spec.config`.
-
-The `-admin` suffix follows the same access rule as Cluster / Usage.
-
-### Dashboard naming
-
-The UI lists every `PersesDashboard` whose **name** starts with `dashboard-`, then sorts those names lexicographically. Tab text is `spec.display.name` (on this cluster that lives at `spec.config.display.name` because the CRD storage version is `v1alpha2`).
-
-```
-dashboard-{order}-{name}[-admin]
+```bash
+oc patch odhdashboardconfig odh-dashboard-config -n redhat-ods-applications --type merge \
+  -p '{"spec":{"dashboardConfig":{"observabilityDashboard":true}}}'
 ```
 
-| Piece | This CR |
-|---|---|
-| `order` | `4` — after `dashboard-3-maas-usage-admin` (`dashboard-3-maas-tokens-admin` would sort **before** Usage) |
-| `name` | `maas-token-metrics` |
-| `-admin` | Present — only users with cluster Prometheus/`prometheuses/api` access see it (same gate as Usage) |
+### 2. Use the same Prometheus datasource as Usage
 
-Do **not** add a variable named `namespace`. OpenShift AI substitutes the signed-in user’s projects for that name. Limitador’s Kubernetes `namespace` label is `kuadrant-system`, not the model project.
+This dashboard queries **`data-science-prometheus-datasource`** in `redhat-ods-monitoring` (RHOAI 3.5 Usage). The dashboard must live in that namespace so Perses can resolve the datasource.
 
-Multi-tenant filter is **Project / route** (`serving_route`). That is Limitador `limitador_namespace` = `{project}/{HTTPRoute}`, for example `beder/gpt-oss-20b-kserve-route`. It is not an OpenShift Route “service”. Filters: `user`, `subscription`, `model`, `serving_route`, with `customAllValue: ".*"` so **All** works in `=~"$var"` matchers.
+```bash
+oc get persesdatasource -n redhat-ods-monitoring
+oc get persesdashboard dashboard-3-maas-usage-admin -n redhat-ods-monitoring \
+  -o yaml | grep -i datasource | head
+```
 
-## Disable Kuadrant observability
+### 3. Disable Kuadrant observability
 
-That flag is UWM-only. It creates `PodMonitor/kuadrant-limitador-monitor`, which duplicates hits (Usage ~8K, Token metrics ~16K if Thanos merges both). Deleting the PodMonitor is not enough; Kuadrant recreates it while the flag is true.
+Kuadrant `spec.observability.enable` is UWM-only. When it is true, Kuadrant creates `PodMonitor/kuadrant-limitador-monitor`, which duplicates hits in Token metrics. Deleting the PodMonitor is not enough; Kuadrant recreates it while the flag is true.
 
 ```bash
 oc patch kuadrant kuadrant -n kuadrant-system --type merge \
@@ -73,9 +55,45 @@ oc get podmonitor kuadrant-limitador-monitor -n kuadrant-system --ignore-not-fou
 
 Do not re-enable `observability.enable` for Token metrics. The same flag also owns `PodMonitor/istio-pod-monitor` in `openshift-ingress` (UWM Istio metrics). Token metrics and Usage do not use it.
 
+### 4. Apply the dashboard and cost rule
+
+```bash
+oc apply -k maas-monitoring/3.5
+```
+
+If a Token metrics dashboard from 3.4 is still live, delete it so there is not a second tab:
+
+```bash
+oc delete persesdashboard dashboard-4-maas-token-metrics-admin -n redhat-ods-applications --ignore-not-found
+oc delete prometheusrule maas-cost-rates -n kuadrant-system --ignore-not-found
+```
+
+### 5. Reload the UI
+
+Open **Observe & monitor → Dashboard**. Admins should see **Cluster**, **Models**, **Usage**, **Token metrics**.
+
+The object name is `dashboard-4-maas-token-metrics-admin` so it sorts after `dashboard-3-maas-usage-admin`. If Usage is not `dashboard-3-…`, rename this CR so the `dashboard-N-` prefix still sorts after it. The `-admin` suffix is the same access gate as Cluster and Usage.
+
+## Dashboard naming
+
+OpenShift AI lists every `PersesDashboard` whose name starts with `dashboard-`. Tab text is `spec.config.display.name` (**Token metrics**).
+
+Do **not** add a variable named `namespace`. OpenShift AI substitutes the signed-in user’s projects for that name. Limitador’s Kubernetes `namespace` label is `kuadrant-system`, not the model project.
+
+## Filters
+
+| Filter | Prometheus label | Purpose |
+|---|---|---|
+| User | `user` | Token identity |
+| Subscription | `subscription` | `MaaSSubscription` name |
+| Model | `model` | Served model |
+| Project / route | `limitador_namespace` (`serving_route` variable) | `{project}/{HTTPRoute}`, for example `beder/gpt-oss-20b-kserve-route` |
+
+**All** on each filter uses `customAllValue: ".*"` so PromQL `=~"$var"` matchers stay valid.
+
 ## Metrics
 
-This dashboard queries **`authorized_hits_total`** (same as Usage on 3.5), labels `user`, `subscription`, `model`. There is no `tier` label; grouping is by **subscription** (`MaaSSubscription` name).
+This dashboard queries **`authorized_hits_total`** (same as Usage on 3.5), labels `user`, `subscription`, `model`. Grouping is by **subscription** (`MaaSSubscription` name).
 
 Rate-limit success/blocked (`authorized_calls` / `limited_calls`) stays on the **Usage** tab. Token metrics is hits, subscriptions, and demo cost.
 
@@ -114,7 +132,7 @@ oc get maassubscription -A
 
 ### Add or set rates (replace the full rule list)
 
-`NS=redhat-ods-monitoring`. Copy every subscription you want billed; merge replaces `spec.groups`.
+Copy every subscription you want billed; merge replaces `spec.groups`.
 
 ```bash
 oc patch prometheusrule.monitoring.rhobs maas-cost-rates -n redhat-ods-monitoring --type merge -p "$(cat <<'EOF'
@@ -135,21 +153,23 @@ EOF
 )"
 ```
 
-Wait ~30s, then confirm against COO Prometheus (not UWM). The web listener is HTTPS:
+Wait about 30 seconds, then confirm against COO Prometheus (not UWM). The web listener is HTTPS:
 
 ```bash
 oc exec -n redhat-ods-monitoring prometheus-data-science-monitoringstack-0 -c prometheus -- \
   curl -skG 'https://localhost:9090/api/v1/query' --data-urlencode 'query=maas:cost_rate'
 ```
 
-JSON patch of `rules/0` is **not** the supported path. That index is whatever happened to be first after the last merge. Replace the full list above.
+Replace the full `spec.groups` list. Do not JSON-patch `rules/0`; that index is whatever happened to be first after the last merge.
 
 Keep the rule in `redhat-ods-monitoring` as `prometheusrule.monitoring.rhobs` so COO evaluates it. Do not use `monitoring.coreos.com/v1` or `openshift.io/prometheus-rule-evaluation-scope: leaf-prometheus` (those are UWM / platform Prometheus).
 
 ## If panels are empty
 
-1. Kuadrant `observability.enable` is still true and `PodMonitor/kuadrant-limitador-monitor` duplicates hits. Disable it.
+1. No `authorized_hits_total` in the COO datasource. If Usage is also empty, scrape is missing.
 2. Datasource is not `data-science-prometheus-datasource` in `redhat-ods-monitoring`.
 3. You are not in the `-admin` audience (need `prometheuses/api` like Usage).
 4. Cost tiles only: hits work, revenue is missing → no `maas:cost_rate` for that `subscription`. Patch `prometheusrule.monitoring.rhobs` (full `spec.groups` list).
 5. Hourly chart is a single bar or looks empty → widen the time range to Last 6h or 24h.
+
+If hit counts look about twice Usage, Kuadrant `observability.enable` is still true. Re-run step 3.

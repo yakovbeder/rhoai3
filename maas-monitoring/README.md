@@ -6,7 +6,9 @@
 
 YAML for a **Token metrics** tab on OpenShift AI **Observe & monitor → Dashboard**. It sorts **after Usage**.
 
-On **3.5** that Dashboard page is GA. The **3.4** snapshot was Tech Preview.
+On **3.5** that Dashboard page is GA. On **3.4** it was Tech Preview.
+
+Run every `oc apply -k` command from the **repo root**.
 
 | Folder | RHOAI | Metrics path | Apply |
 |---|---|---|---|
