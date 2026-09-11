@@ -6,9 +6,7 @@
 
 Customer-facing YAML for a **Token metrics** tab on OpenShift AI **Observe & monitor → Dashboard (Tech Preview)**. It sorts **after Usage**.
 
-This is a **component-owned** dashboard (MaaS), not a PR into `odh-dashboard`. The UI picks it up automatically when the name follows the convention in the [ODH observability dashboards guide](https://github.com/opendatahub-io/odh-dashboard/blob/main/docs/observability.md#observability-dashboards).
-
-Do not replace the Usage dashboard (`dashboard-3-maas-usage-admin`).
+Apply the YAML on the cluster. OpenShift AI lists the new tab next to Usage when the object name starts with `dashboard-`. Leave the product Usage dashboard (`dashboard-3-maas-usage-admin`) in place.
 
 **3.4 uses User Workload Monitoring / OpenShift Thanos.** Queries, scrape, and cost recording stay on that path (`kuadrant-prometheus-datasource`, `authorized_hits`).
 
@@ -62,7 +60,7 @@ Reload **Observe & monitor → Dashboard**. Admins should see **Cluster**, **Mod
 
 The `-admin` suffix follows the same Thanos access rule as Cluster / Usage.
 
-### ODH naming (from the guide)
+### Dashboard naming
 
 The UI lists every `PersesDashboard` whose **name** starts with `dashboard-`, then sorts those names lexicographically. Tab text is `spec.display.name` (on this cluster that lives at `spec.config.display.name` because the CRD storage version is `v1alpha2`).
 
@@ -76,7 +74,7 @@ dashboard-{order}-{name}[-admin]
 | `name` | `maas-token-metrics` |
 | `-admin` | Present — only users with cluster Prometheus/`prometheuses/api` access see it (same gate as Usage) |
 
-Do **not** add a variable named `namespace`. The guide’s special `namespace` handling substitutes the user’s OpenShift projects. Limitador’s Kubernetes `namespace` label is `kuadrant-system`, not the model project.
+Do **not** add a variable named `namespace`. OpenShift AI substitutes the signed-in user’s projects for that name. Limitador’s Kubernetes `namespace` label is `kuadrant-system`, not the model project.
 
 Multi-tenant filter is **Project / route** (`serving_route`). That is Limitador `limitador_namespace` = `{project}/{HTTPRoute}`, for example `beder/gpt-oss-20b-kserve-route`. It is not an OpenShift Route “service”. Filters: `user`, `subscription`, `model`, `serving_route`, with `customAllValue: ".*"` so **All** works in `=~"$var"` matchers.
 

@@ -15,6 +15,6 @@ On **3.5** that Dashboard page is GA. The **3.4** snapshot was Tech Preview.
 
 Do not apply both: two `PersesDashboard` objects with the same name in different namespaces become two Token metrics tabs.
 
-Do not replace the product Usage dashboard (`dashboard-3-maas-usage-admin`). The UI lists any `PersesDashboard` whose name starts with `dashboard-`. This is a component-owned dashboard, not a PR into `odh-dashboard`.
+Leave the product Usage dashboard (`dashboard-3-maas-usage-admin`) in place. OpenShift AI lists any `PersesDashboard` whose name starts with `dashboard-`.
 
 There is no kustomize overlay at this directory. Apply a version folder, not `oc apply -k maas-monitoring`.

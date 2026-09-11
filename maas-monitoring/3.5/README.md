@@ -6,9 +6,7 @@
 
 Customer-facing YAML for a **Token metrics** tab on OpenShift AI **Observe & monitor → Dashboard**. It sorts **after Usage**. On 3.5 that Dashboard page is GA.
 
-This is a **component-owned** dashboard (MaaS), not a PR into `odh-dashboard`. The UI picks it up automatically when the name follows the convention in the [ODH observability dashboards guide](https://github.com/opendatahub-io/odh-dashboard/blob/main/docs/observability.md#observability-dashboards).
-
-Do not replace the Usage dashboard (`dashboard-3-maas-usage-admin`).
+Apply the YAML on the cluster. OpenShift AI lists the new tab next to Usage when the object name starts with `dashboard-`. Leave the product Usage dashboard (`dashboard-3-maas-usage-admin`) in place.
 
 **3.5 does not use User Workload Monitoring.** Queries, scrape, and cost recording all stay on Cluster Observability Operator (COO), same as Usage and the other 3.5 dashboards.
 
@@ -45,7 +43,7 @@ Reload **Observe & monitor → Dashboard**. Admins should see **Cluster**, **Mod
 
 The `-admin` suffix follows the same access rule as Cluster / Usage.
 
-### ODH naming (from the guide)
+### Dashboard naming
 
 The UI lists every `PersesDashboard` whose **name** starts with `dashboard-`, then sorts those names lexicographically. Tab text is `spec.display.name` (on this cluster that lives at `spec.config.display.name` because the CRD storage version is `v1alpha2`).
 
@@ -59,23 +57,13 @@ dashboard-{order}-{name}[-admin]
 | `name` | `maas-token-metrics` |
 | `-admin` | Present — only users with cluster Prometheus/`prometheuses/api` access see it (same gate as Usage) |
 
-Do **not** add a variable named `namespace`. The guide’s special `namespace` handling substitutes the user’s OpenShift projects. Limitador’s Kubernetes `namespace` label is `kuadrant-system`, not the model project.
+Do **not** add a variable named `namespace`. OpenShift AI substitutes the signed-in user’s projects for that name. Limitador’s Kubernetes `namespace` label is `kuadrant-system`, not the model project.
 
 Multi-tenant filter is **Project / route** (`serving_route`). That is Limitador `limitador_namespace` = `{project}/{HTTPRoute}`, for example `beder/gpt-oss-20b-kserve-route`. It is not an OpenShift Route “service”. Filters: `user`, `subscription`, `model`, `serving_route`, with `customAllValue: ".*"` so **All** works in `=~"$var"` matchers.
 
-## Limitador scrape (COO only)
+## Disable Kuadrant observability
 
-Empty hit panels mean Limitador `/metrics` is not in COO Prometheus.
-
-On RHOAI 3.5, MaaS `Config/default` already owns `ServiceMonitor/limitador-metrics` in `redhat-ods-monitoring`. COO `MonitoringStack/data-science-monitoringstack` scrapes it as `authorized_hits_total`. **Do not add a second scrape.**
-
-```bash
-oc get servicemonitor limitador-metrics -n redhat-ods-monitoring
-# In COO Thanos (data-science-prometheus-datasource):
-#   authorized_hits_total
-```
-
-**Disable Kuadrant observability.** That flag is UWM-only. It creates `PodMonitor/kuadrant-limitador-monitor`, which duplicates Limitador hits (Usage ~8K, Token metrics ~16K if Thanos merges both). Deleting the PodMonitor is not enough; Kuadrant recreates it while the flag is true.
+That flag is UWM-only. It creates `PodMonitor/kuadrant-limitador-monitor`, which duplicates hits (Usage ~8K, Token metrics ~16K if Thanos merges both). Deleting the PodMonitor is not enough; Kuadrant recreates it while the flag is true.
 
 ```bash
 oc patch kuadrant kuadrant -n kuadrant-system --type merge \
@@ -83,9 +71,7 @@ oc patch kuadrant kuadrant -n kuadrant-system --type merge \
 oc get podmonitor kuadrant-limitador-monitor -n kuadrant-system --ignore-not-found
 ```
 
-Do **not** apply [`../3.4/limitador-servicemonitor.yaml`](../3.4/limitador-servicemonitor.yaml) on 3.5 (UWM fallback). Do not re-enable `observability.enable` for Token metrics.
-
-The same Kuadrant flag also owns `PodMonitor/istio-pod-monitor` in `openshift-ingress` (UWM Istio metrics). Token metrics and Usage do not use it.
+Do not re-enable `observability.enable` for Token metrics. The same flag also owns `PodMonitor/istio-pod-monitor` in `openshift-ingress` (UWM Istio metrics). Token metrics and Usage do not use it.
 
 ## Metrics
 
@@ -162,9 +148,8 @@ Keep the rule in `redhat-ods-monitoring` as `prometheusrule.monitoring.rhobs` so
 
 ## If panels are empty
 
-1. Scrape: no `authorized_hits_total` in COO Prometheus. Confirm `ServiceMonitor/limitador-metrics` in `redhat-ods-monitoring`.
-2. Kuadrant `observability.enable` is still true and `PodMonitor/kuadrant-limitador-monitor` duplicates hits. Disable it.
-3. Datasource is not `data-science-prometheus-datasource` in `redhat-ods-monitoring`.
-4. You are not in the `-admin` audience (need `prometheuses/api` like Usage).
-5. Cost tiles only: hits work, revenue is missing → no `maas:cost_rate` for that `subscription`. Patch `prometheusrule.monitoring.rhobs` (full `spec.groups` list).
-6. Hourly chart is a single bar or looks empty → widen the time range to Last 6h or 24h.
+1. Kuadrant `observability.enable` is still true and `PodMonitor/kuadrant-limitador-monitor` duplicates hits. Disable it.
+2. Datasource is not `data-science-prometheus-datasource` in `redhat-ods-monitoring`.
+3. You are not in the `-admin` audience (need `prometheuses/api` like Usage).
+4. Cost tiles only: hits work, revenue is missing → no `maas:cost_rate` for that `subscription`. Patch `prometheusrule.monitoring.rhobs` (full `spec.groups` list).
+5. Hourly chart is a single bar or looks empty → widen the time range to Last 6h or 24h.
