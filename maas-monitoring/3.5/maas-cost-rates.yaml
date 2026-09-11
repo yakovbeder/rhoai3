@@ -1,0 +1,31 @@
+# USD per authorized hit, keyed by Prometheus `subscription` label
+# (MaaSSubscription metadata.name). Cost panels join authorized_hits_total to maas:cost_rate.
+#
+# RHOAI 3.5 / COO: apiVersion monitoring.rhobs/v1 so Cluster Observability Operator
+# (obo-prometheus-operator) loads the rule into MonitoringStack
+# data-science-monitoringstack. monitoring.coreos.com/v1 is UWM / platform Prometheus.
+#
+# Add or change rates with oc patch — see README.md (do not edit dashboard PromQL).
+apiVersion: monitoring.rhobs/v1
+kind: PrometheusRule
+metadata:
+  name: maas-cost-rates
+  namespace: redhat-ods-monitoring
+  labels:
+    app.kubernetes.io/name: maas-token-metrics
+    app.kubernetes.io/part-of: maas-observability
+spec:
+  groups:
+  - name: maas-cost
+    interval: 30s
+    rules:
+    # COST_RATES: one recording series per subscription. expr is USD per authorized hit.
+    # vector(N) is a PromQL constant: emit N with no metric input (here dollars per hit).
+    - record: maas:cost_rate
+      expr: vector(0.008)
+      labels:
+        subscription: gpt-premium
+    - record: maas:cost_rate
+      expr: vector(0.008)
+      labels:
+        subscription: bedrock-free
